@@ -62,9 +62,6 @@ object JooqGenerator {
                 })
               def apply(..${fieldData.map(f => q"${f.termName}: ${f.scalaType}")}) =
                 new $typeName(..${fieldData.map(f => q"${f.termName} = ${f.termName}")})
-
-              def table: $t = ${t.typeSymbol.companionSymbol}.$tableValue
-
             }
           """,
         q"""implicit def ${newTermName(s"${typeName}Record2RecordLike")} (rec: $recordType): $typeName = ${newTermName(typeName.toString)}(rec)""",
