@@ -17,7 +17,7 @@ class JooqGeneratorTableSpec extends Specification {
   """.stripMargin
 
   Class.forName("org.h2.Driver")
-  val dsl = using(DriverManager.getConnection("jdbc:h2:localhost:9092:/~/blah", "", ""), SQLDialect.H2)
+  val dsl = using(DriverManager.getConnection("jdbc:h2:./target/test-db", "", ""), SQLDialect.H2)
   val select = dsl.select(count(Author.ID)).from(Author).fetchOne().value1() must_== 2
   val selectFrom = dsl.selectFrom(Author).fetch().asScala.toList must have size 2
 }

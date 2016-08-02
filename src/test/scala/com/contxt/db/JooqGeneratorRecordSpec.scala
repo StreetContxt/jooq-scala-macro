@@ -17,7 +17,7 @@ class JooqGeneratorRecordSpec extends Specification {
   """.stripMargin
 
   Class.forName("org.h2.Driver")
-  val dsl = using(DriverManager.getConnection("jdbc:h2:localhost:9092:/~/blah", "", ""), SQLDialect.H2)
+  val dsl = using(DriverManager.getConnection("jdbc:h2:./target/test-db", "", ""), SQLDialect.H2)
 
   val authorRecord: AuthorRecord = dsl.selectFrom(Author).where(Author.ID === 1).fetchOne()
   val author: Author = authorRecord
