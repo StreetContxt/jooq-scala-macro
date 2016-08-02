@@ -69,7 +69,7 @@ object JooqGenerator {
                 res.asScala.toList.map(${newTermName(s"${typeName}Record2RecordLike")}(_))""",
         q"""
             class $typeName private(..$fieldDefs)
-              extends JooqRecordLike[$recordType] {
+              extends JooqRecordLike[$recordType] with Equals {
 
               def record: $recordType = {
                 val rec = new $recordType();
@@ -85,11 +85,35 @@ object JooqGenerator {
             fieldData.map(f =>
               q"""
                          ${f.modifiedFlag} =
-                         this.${f.modifiedFlag}|| this.${f.termName} != ${f.termName}
+                         this.${f.modifiedFlag} || this.${f.termName} != ${f.termName}
                       """)
         }
                 )
 
+              override def canEqual(other: Any): Boolean = other.isInstanceOf[$typeName]
+
+              override def equals(other: Any): Boolean = other match {
+                case o: $typeName if canEqual(o) =>
+                  ${(fieldData.map(f => q"${f.termName} == o.${f.termName}") :::
+                     fieldData.map(f => q"${f.modifiedFlag} == o.${f.modifiedFlag}"))
+                     .reduceOption((t1, t2) => q"$t1 && $t2").getOrElse(q"false")}
+                case _ => false
+              }
+
+              override def hashCode(): Int = {
+                 ${(fieldData.map(f => q"${f.termName}.hashCode") :::
+                   fieldData.map(f => q"${f.modifiedFlag}.hashCode"))
+                     .reduceOption((t1: Tree, t2: Tree) => q"$t1 + $t2").getOrElse(q"0")}
+              }
+
+              override def toString(): String = {
+                   val sep = ", "
+                   ${typeName.toString} + "(" +
+                   ${(fieldData.map(f => q"${f.termName}.toString") :::
+                        fieldData.map(f => q"${f.modifiedFlag}.toString"))
+                    .reduceOption((t1: Tree, t2: Tree) => q"$t1 + sep + $t2")
+                    .getOrElse(q"")} + ")"
+              }
             }
           """
       )
