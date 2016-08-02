@@ -17,13 +17,12 @@ object Database { }
 
 import Database._
 import Database.MySchema._
-import
 
 val dsl: DSLContxt = ???
 
 // implicitly converts from AuthorRecord to Author
 // the companion object for Author extends the jooq generated table for Author
-val author: Author = dsl.selectFromAuthor)
+val author: Author = dsl.selectFrom(Author)
                         .where(Author.ID === 1)
                         .fetchOne()
 
