@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/StreetContxt/jooq-scala-macro.svg?branch=master)](https://travis-ci.org/StreetContxt/jooq-scala-macro)
+
 # Introduction
 
 The Jooq-scala-macro project consists of a public type provider for scala which generates immutable scala classes based on the standard generated jooq meta-model classes
