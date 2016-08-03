@@ -42,6 +42,7 @@ scalacOptions ++= Seq(
   "-deprecation",
   "-feature",
   "-unchecked",
+  "-Ymacro-debug-lite",
   "-Xlint"
 )
 
@@ -61,13 +62,9 @@ addCompilerPlugin("org.scalamacros" % "paradise_2.10.4" % "2.1.0-M5")
 
 enablePlugins(JooqCodegen)
 
-lazy val startH2 = TaskKey[Unit]("start-h2", "starts a local H2 Database")
-
-lazy val stopH2 = TaskKey[Unit]("stop-h2", "starts a local H2 Database")
-
 lazy val populateH2 = TaskKey[Unit]("populate-h2", "populates the H2 Database")
 
-lazy val debugSourceRoot = TaskKey[Unit]("debugSourceRoot", "debug")
+coverageHighlighting := false
 
 populateH2 := {
   Class.forName("org.h2.Driver")
