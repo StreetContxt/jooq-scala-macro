@@ -158,6 +158,14 @@ object JooqGenerator {
       val convert =
         if (fieldType == typeOf[java.sql.Timestamp]) q"java.sql.Timestamp.valueOf(value)"
         else if (fieldType == typeOf[java.math.BigDecimal]) q"value.bigDecimal"
+        else if (fieldType == typeOf[java.lang.Byte]) q"byte2Byte(value)"
+        else if (fieldType == typeOf[java.lang.Short]) q"short2Short(value)"
+        else if (fieldType == typeOf[java.lang.Integer]) q"int2Integer(value)"
+        else if (fieldType == typeOf[java.lang.Long]) q"long2Long(value)"
+        else if (fieldType == typeOf[java.lang.Float]) q"float2Float(value)"
+        else if (fieldType == typeOf[java.lang.Double]) q"double2Double(value)"
+        else if (fieldType == typeOf[java.lang.Character]) q"char2Char(value)"
+        else if (fieldType == typeOf[java.lang.Boolean]) q"boolean2Boolean(value)"
         else q"value"
 
       if (rf.getDataType.nullable) q"{(rec: $recordType, opt: $scalaType) => rec.$recordSetter(opt.map(value => $convert).getOrElse(null))}"
@@ -166,19 +174,35 @@ object JooqGenerator {
 
     def genGetter(rf: TableField[Record, _], recordType: Type, scalaType: Type, fieldType: Type, camel: String): Tree = {
       val recordGetter: Symbol = recordType.declaration(newTermName(s"get${camel.capitalize}"))
-      val convert =
-        if (fieldType == typeOf[java.sql.Timestamp]) q"rec.$recordGetter.toLocalDateTime()"
-        else if (fieldType == typeOf[java.math.BigDecimal]) q"scala.math.BigDecimal(rec.$recordGetter)"
-        else q"rec.$recordGetter"
+      val (convert: Tree, get: Tree) =
+        if (fieldType == typeOf[java.sql.Timestamp]) (q"value.toLocalDateTime()", q"rec.$recordGetter")
+        else if (fieldType == typeOf[java.math.BigDecimal]) (q"scala.math.BigDecimal(value)", q"rec.$recordGetter")
+        else if (fieldType == typeOf[java.lang.Byte]) (q"Byte2byte(value)", q"rec.$recordGetter")
+        else if (fieldType == typeOf[java.lang.Short]) (q"Short2short(value)", q"rec.$recordGetter")
+        else if (fieldType == typeOf[java.lang.Integer]) (q"Integer2int(value)", q"rec.$recordGetter")
+        else if (fieldType == typeOf[java.lang.Long]) (q"Long2long(value)", q"rec.$recordGetter")
+        else if (fieldType == typeOf[java.lang.Float]) (q"Float2float(value)", q"rec.$recordGetter")
+        else if (fieldType == typeOf[java.lang.Double]) (q"Double2double(value)", q"rec.$recordGetter")
+        else if (fieldType == typeOf[java.lang.Character]) (q"Char2char(value)", q"rec.$recordGetter")
+        else if (fieldType == typeOf[java.lang.Boolean]) (q"Boolean2boolean(value)", q"rec.$recordGetter")
+        else (q"value", q"rec.$recordGetter")
 
-      if (rf.getDataType.nullable) q"{rec: $recordType => Option($convert)}"
-      else q"{rec: $recordType => $convert}"
+      if (rf.getDataType.nullable) q"{rec: $recordType => Option($get).map(value => $convert)}"
+      else q"{rec: $recordType => val value = $get; $convert}"
     }
 
     def determineScalaType(rf: TableField[Record, _], fieldType: Type): Type = {
       val baseType =
         if (fieldType == typeOf[java.sql.Timestamp]) typeOf[LocalDateTime]
         else if (fieldType == typeOf[java.math.BigDecimal]) typeOf[BigDecimal]
+        else if (fieldType == typeOf[java.lang.Byte]) typeOf[Byte]
+        else if (fieldType == typeOf[java.lang.Short]) typeOf[Short]
+        else if (fieldType == typeOf[java.lang.Integer]) typeOf[Int]
+        else if (fieldType == typeOf[java.lang.Long]) typeOf[Long]
+        else if (fieldType == typeOf[java.lang.Float]) typeOf[Float]
+        else if (fieldType == typeOf[java.lang.Double]) typeOf[Double]
+        else if (fieldType == typeOf[java.lang.Character]) typeOf[Char]
+        else if (fieldType == typeOf[java.lang.Boolean]) typeOf[Boolean]
         else fieldType
 
       if (rf.getDataType.nullable) appliedType(weakTypeOf[Option[_]], List(baseType)) else baseType
