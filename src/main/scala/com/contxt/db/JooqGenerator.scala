@@ -1,75 +1,60 @@
 package com.contxt.db
 
 
-import java.time.LocalDateTime
-
-import org.jooq.{Record, TableField}
+import org.jooq.{Record, TableField, TableRecord}
 
 import scala.annotation.StaticAnnotation
 import scala.language.experimental.macros
-import scala.reflect.macros.Context
+import scala.reflect.macros.whitebox
 
 class fromCatalog[C <: org.jooq.Catalog] extends StaticAnnotation {
   def macroTransform(annottees: Any*) = macro JooqGenerator.fromSchema_impl
 }
 
-object JooqGenerator {
+class JooqGenerator(val c: whitebox.Context) {
   gen =>
-  def fromSchema_impl(c: Context)(annottees: c.Expr[Any]*) = {
-    import c.universe._
 
-    case class FieldData(termName: TermName,
-                         modifiedFlag: TermName,
-                         fieldName: String,
-                         javaType: Type,
-                         scalaType: Type,
-                         nullable: Boolean,
-                         recordSetter: Tree,
-                         recordGetter: Tree)
+  import c.universe._
 
-    def genTableTypes(t: Type): List[Tree] = {
-
-      val fields: List[TermSymbol] = t.declarations
-        .filterNot(_.isMethod)
-        .filter(_.isTerm)
-        .map(_.asTerm)
-        .filter(_.typeSignature.baseClasses.exists(_.fullName == "org.jooq.TableField"))
-        .toList
-
-      val tableValue = t.typeSymbol
-        .companionSymbol
-        .typeSignature
-        .declarations
-        .filter(_.typeSignature == t)
-        .head
-        .name.toTermName
-
-      val tableTrait = t.typeSymbol.typeSignature.baseClasses.filter(_.fullName == "org.jooq.Table").head.asClass
-      val recordType = tableTrait.typeParams.head.asType.toType.asSeenFrom(t, tableTrait)
-      val fieldData = genFieldList(fields, t, recordType)
-      val typeName: TypeName = newTypeName(t.typeSymbol.name.toString)
-
-      val fieldDefs: List[Tree] = fieldData.map(f => q"val ${f.termName}: ${f.scalaType}") :::
-        fieldData.map(f => q"val ${f.modifiedFlag}: Boolean = true")
+  case class FieldData(termName: TermName,
+                       modifiedFlag: TermName,
+                       modifiedFlagAccessor: TermName,
+                       fieldName: String,
+                       javaType: Type,
+                       scalaType: Type,
+                       nullable: Boolean,
+                       recordSetter: Tree,
+                       recordGetter: Tree,
+                       rawGetter: Tree,
+                       index: Int
+                      )
 
 
-      List(
-        q"""
-            object ${newTermName(typeName.toString)} extends $t {
-              def apply(rec: $recordType): $typeName =
-                new $typeName(..${fieldData.map(f => q"${f.termName} = ${f.recordGetter}(rec)") :::
-                  fieldData.map(f => q"${f.modifiedFlag} = rec.changed(${f.fieldName})")
-                })
-              def apply(..${fieldData.map(f => q"${f.termName}: ${f.scalaType}")}) =
-                new $typeName(..${fieldData.map(f => q"${f.termName} = ${f.termName}")})
-            }
-          """,
-        q"""implicit def ${newTermName(s"${typeName}Record2RecordLike")} (rec: $recordType): $typeName = ${newTermName(typeName.toString)}(rec)""",
-        q"""implicit def ${newTermName(s"${typeName}ResultToListOfRecordLike")} (res: org.jooq.Result[$recordType]): List[$typeName] =
-                res.asScala.toList.map(${newTermName(s"${typeName}Record2RecordLike")}(_))""",
-        q"""
-            class $typeName private(..$fieldDefs)
-              extends JooqRecordLike[$recordType] with Equals {
+  def genTableTypes(t: Type): List[Tree] = {
+    val fields: List[TermSymbol] = t.decls
+      .filterNot(_.isMethod)
+      .filter(_.isTerm)
+      .map(_.asTerm)
+      .filter(_.typeSignature.baseClasses.exists(_.fullName == "org.jooq.TableField"))
+      .toList
+
+    val tableTrait = t.typeSymbol.typeSignature.baseClasses.filter(_.fullName == "org.jooq.Table").head.asClass
+    val recordType = tableTrait.typeParams.head.asType.toType.asSeenFrom(t, tableTrait)
+    val fieldData = genFieldList(fields, t, recordType)
+    val typeName: TypeName = TypeName(t.typeSymbol.name.toString)
+
+    val fieldDefs: List[Tree] = fieldData.map(f => q"val ${f.termName}: ${f.scalaType}")
+    val modFlags = fieldData.map(f => q"""private var ${f.modifiedFlag}: Boolean = true""")
+    val modAccessors = fieldData.map(f => q"""def ${f.modifiedFlagAccessor}: Boolean = ${f.modifiedFlag}""")
+
+
+
+    val caseClass: Tree = q"""
+            case class $typeName (..$fieldDefs)
+              extends JooqRecordLike[$recordType] {
+
+              ..$modFlags
+              ..$modAccessors
 
               def record: $recordType = {
                 val rec = new $recordType();
@@ -81,158 +66,194 @@ object JooqGenerator {
               def copy(..${fieldData.map(f => q"val ${f.termName}: ${f.scalaType} = ${f.termName}")}): $typeName =
                 new $typeName(
                   ..${
-          fieldData.map(f => q"${f.termName} = ${f.termName}") :::
-            fieldData.map(f =>
-              q"""
-                         ${f.modifiedFlag} =
-                         this.${f.modifiedFlag} || this.${f.termName} != ${f.termName}
-                      """)
-        }
+      fieldData.map(f => q"${f.termName} = ${f.termName}") :::
+        fieldData.map(f => q"""${f.modifiedFlag} = this.${f.modifiedFlag}|| this.${f.termName} != ${f.termName}""")
+    }
                 )
-
-              override def canEqual(other: Any): Boolean = other.isInstanceOf[$typeName]
-
-              override def equals(other: Any): Boolean = other match {
-                case o: $typeName if canEqual(o) =>
-                  ${(fieldData.map(f => q"${f.termName} == o.${f.termName}") :::
-                     fieldData.map(f => q"${f.modifiedFlag} == o.${f.modifiedFlag}"))
-                     .reduceOption((t1, t2) => q"$t1 && $t2").getOrElse(q"false")}
-                case _ => false
-              }
-
-              override def hashCode(): Int = {
-                 ${(fieldData.map(f => q"${f.termName}.hashCode") :::
-                   fieldData.map(f => q"${f.modifiedFlag}.hashCode"))
-                     .reduceOption((t1: Tree, t2: Tree) => q"$t1 + $t2").getOrElse(q"0")}
-              }
-
-              override def toString(): String = {
-                   val sep = ", "
-                   ${typeName.toString} + "(" +
-                   ${(fieldData.map(f => q"${f.termName}.toString") :::
-                        fieldData.map(f => q"${f.modifiedFlag}.toString"))
-                    .reduceOption((t1: Tree, t2: Tree) => q"$t1 + sep + $t2")
-                    .getOrElse(q"")} + ")"
-              }
             }
+          """ match {
+      case q"case class $typeName (..$fieldDefs) extends JooqRecordLike[$recordType] { ..$body }" =>
+        val modCtor =
+          q"""
+          private def this(..${fieldDefs ::: fieldData.map(f => q"""private var ${f.modifiedFlag}: Boolean""")}) = {
+                this(..${fieldData.map(f => q"${f.termName} = ${f.termName}")})
+                ..${fieldData.map(f => q"this.${f.modifiedFlag} = ${f.modifiedFlag}")}
+          }"""
+        val recCtor =
+          q"""
+          def this(rec: $recordType) =
+             this(..${
+            fieldData.map(f => q"${f.termName} = ${f.recordGetter}(rec)") :::
+              fieldData.map(f => q"${f.modifiedFlag} = rec.changed(${f.fieldName})")
+          })
           """
-      )
+        val defaultCtorPos = c.enclosingPosition
+        val modCtorPos = defaultCtorPos
+          .withEnd(defaultCtorPos.endOrPoint + 1)
+          .withStart(defaultCtorPos.startOrPoint + 1)
+          .withPoint(defaultCtorPos.point + 1)
+        val recCtorPos = modCtorPos
+          .withEnd(modCtorPos.endOrPoint + 1)
+          .withStart(modCtorPos.startOrPoint + 1)
+          .withPoint(modCtorPos.point + 1)
+        val newBody = body :+ atPos(modCtorPos)(modCtor) :+ atPos(recCtorPos)(recCtor)
+        q"case class $typeName (..$fieldDefs) extends JooqRecordLike[$recordType] { ..$newBody }"
     }
 
-    def genFieldList(fields: List[TermSymbol], container: Type, recordType: Type): List[FieldData] = {
-      val tableClass: Class[_] = Class.forName(container.typeSymbol.fullName.toString)
-      val table = tableClass.getDeclaredFields
-        .filter(_.getType == tableClass).head.get(null)
-        .asInstanceOf[org.jooq.Table[org.jooq.Record]]
 
-      val fieldInfo: List[(TermSymbol, TableField[Record, _])] = fields
-        .map { cf =>
-          (cf, tableClass.getDeclaredField(cf.name.toString).get(table)
-            .asInstanceOf[TableField[Record, _]])
-        }
+    List(
+      q"""object ${TermName(typeName.toString)} extends $t {
+              def apply(rec: $recordType): $typeName = new $typeName(rec)
+        }""",
+      q"""implicit def ${TermName(s"${typeName}Record2RecordLike")} (rec: $recordType): $typeName = ${TermName(typeName.toString)}(rec)""",
+      q"""implicit def ${TermName(s"${typeName}ResultToListOfRecordLike")} (res: org.jooq.Result[$recordType]): List[$typeName] =
+                res.asScala.toList.map(${TermName(s"${typeName}Record2RecordLike")}(_))""",
+      caseClass
+    )
+  }
 
-      fieldInfo.map { case (cf, rf) =>
-        val fieldType: Type = cf.typeSignature.typeSymbol.asClass
-          .typeParams(1)
-          .asType
-          .toType
-          .asSeenFrom(cf.typeSignature, cf.typeSignature.typeSymbol)
-        val scalaType = determineScalaType(rf, fieldType)
-        val camel: String = underscoreToCamel(cf.name.toTermName.toString.toLowerCase)
+  def genFieldList(fields: List[TermSymbol], container: Type, recordType: Type): List[FieldData] = {
+    val tableClass: Class[_] = Class.forName(container.typeSymbol.fullName.toString)
+    val table = tableClass.getDeclaredFields
+      .filter(_.getType == tableClass).head.get(null)
+      .asInstanceOf[org.jooq.Table[org.jooq.Record]]
 
-        FieldData(
-          termName = newTermName(camel),
-          modifiedFlag = newTermName(camel + "Modified"),
-          fieldName = rf.getName,
-          javaType = fieldType,
-          scalaType = scalaType,
-          nullable = rf.getDataType.nullable,
-          recordSetter = genSetter(rf, recordType, scalaType, fieldType, camel),
-          recordGetter = genGetter(rf, recordType, scalaType, fieldType, camel)
-        )
+    val recordFields: Map[String, Int] = Class.forName(recordType.typeSymbol.fullName.toString)
+      .getConstructor().newInstance().asInstanceOf[TableRecord[_]].fields()
+      .zipWithIndex.map(t => (t._1.getName, t._2)).toMap
+
+    val fieldInfo: List[(Int, TermSymbol, TableField[Record, _])] = fields
+      .map { cf =>
+        (cf, tableClass.getDeclaredField(cf.name.toString).get(table)
+          .asInstanceOf[TableField[Record, _]])
       }
-    }
+      .map { case (cf, rf) => (recordFields(rf.getName), cf, rf) }
+      .sortBy(_._1)
 
-    def genSetter(rf: TableField[Record, _], recordType: Type, scalaType: Type, fieldType: Type, camel: String): Tree = {
-      val recordSetter: Symbol = recordType.declaration(newTermName(s"set${camel.capitalize}"))
-      val convert =
-        if (fieldType == typeOf[java.sql.Timestamp]) q"java.sql.Timestamp.valueOf(value)"
-        else if (fieldType == typeOf[java.math.BigDecimal]) q"value.bigDecimal"
-        else if (fieldType == typeOf[java.lang.Byte]) q"byte2Byte(value)"
-        else if (fieldType == typeOf[java.lang.Short]) q"short2Short(value)"
-        else if (fieldType == typeOf[java.lang.Integer]) q"int2Integer(value)"
-        else if (fieldType == typeOf[java.lang.Long]) q"long2Long(value)"
-        else if (fieldType == typeOf[java.lang.Float]) q"float2Float(value)"
-        else if (fieldType == typeOf[java.lang.Double]) q"double2Double(value)"
-        else if (fieldType == typeOf[java.lang.Character]) q"char2Char(value)"
-        else if (fieldType == typeOf[java.lang.Boolean]) q"boolean2Boolean(value)"
-        else q"value"
 
-      if (rf.getDataType.nullable) q"{(rec: $recordType, opt: $scalaType) => rec.$recordSetter(opt.map(value => $convert).getOrElse(null))}"
-      else q"{(rec: $recordType, value: $scalaType) => rec.$recordSetter($convert)}"
-    }
+    fieldInfo.map { case (idx, cf, rf) =>
+      val fieldType: Type = cf.typeSignature.typeSymbol.asClass
+        .typeParams(1)
+        .asType
+        .toType
+        .asSeenFrom(cf.typeSignature, cf.typeSignature.typeSymbol)
+      val scalaType = determineScalaType(rf, fieldType)
+      val camel: String = underscoreToCamel(cf.name.toTermName.toString.toLowerCase)
+      FieldData(
+        termName = TermName(camel),
+        modifiedFlag = TermName(s"${camel}Modified_"),
+        modifiedFlagAccessor = TermName(s"${camel}Modified"),
+        fieldName = rf.getName,
+        javaType = fieldType,
+        scalaType = scalaType,
+        nullable = rf.getDataType.nullable,
+        recordSetter = genSetter(rf, recordType, scalaType, fieldType, camel),
+        recordGetter = genGetter(rf, recordType, scalaType, fieldType, camel),
+        rawGetter = genRawGetter(rf, scalaType, fieldType, camel),
+        idx
+      )
+    }.sortBy(f => f.index)
+  }
 
-    def genGetter(rf: TableField[Record, _], recordType: Type, scalaType: Type, fieldType: Type, camel: String): Tree = {
-      val recordGetter: Symbol = recordType.declaration(newTermName(s"get${camel.capitalize}"))
-      val (convert: Tree, get: Tree) =
-        if (fieldType == typeOf[java.sql.Timestamp]) (q"value.toLocalDateTime()", q"rec.$recordGetter")
-        else if (fieldType == typeOf[java.math.BigDecimal]) (q"scala.math.BigDecimal(value)", q"rec.$recordGetter")
-        else if (fieldType == typeOf[java.lang.Byte]) (q"Byte2byte(value)", q"rec.$recordGetter")
-        else if (fieldType == typeOf[java.lang.Short]) (q"Short2short(value)", q"rec.$recordGetter")
-        else if (fieldType == typeOf[java.lang.Integer]) (q"Integer2int(value)", q"rec.$recordGetter")
-        else if (fieldType == typeOf[java.lang.Long]) (q"Long2long(value)", q"rec.$recordGetter")
-        else if (fieldType == typeOf[java.lang.Float]) (q"Float2float(value)", q"rec.$recordGetter")
-        else if (fieldType == typeOf[java.lang.Double]) (q"Double2double(value)", q"rec.$recordGetter")
-        else if (fieldType == typeOf[java.lang.Character]) (q"Char2char(value)", q"rec.$recordGetter")
-        else if (fieldType == typeOf[java.lang.Boolean]) (q"Boolean2boolean(value)", q"rec.$recordGetter")
-        else (q"value", q"rec.$recordGetter")
+  def genSetter(rf: TableField[Record, _], recordType: Type, scalaType: Type, fieldType: Type, camel: String): Tree = {
+    val recordSetter: Symbol = recordType.decl(TermName(s"set${camel.capitalize}"))
+    val convert =
+      if (fieldType == typeOf[java.math.BigDecimal]) q"value.bigDecimal"
+      else if (fieldType == typeOf[java.lang.Byte]) q"byte2Byte(value)"
+      else if (fieldType == typeOf[java.lang.Short]) q"short2Short(value)"
+      else if (fieldType == typeOf[java.lang.Integer]) q"int2Integer(value)"
+      else if (fieldType == typeOf[java.lang.Long]) q"long2Long(value)"
+      else if (fieldType == typeOf[java.lang.Float]) q"float2Float(value)"
+      else if (fieldType == typeOf[java.lang.Double]) q"double2Double(value)"
+      else if (fieldType == typeOf[java.lang.Character]) q"char2Char(value)"
+      else if (fieldType == typeOf[java.lang.Boolean]) q"boolean2Boolean(value)"
+      else q"value"
 
-      if (rf.getDataType.nullable) q"{rec: $recordType => Option($get).map(value => $convert)}"
-      else q"{rec: $recordType => val value = $get; $convert}"
-    }
+    if (rf.getDataType.nullable) q"{(rec: $recordType, opt: $scalaType) => rec.$recordSetter(opt.map(value => $convert).getOrElse(null))}"
+    else q"{(rec: $recordType, value: $scalaType) => rec.$recordSetter($convert)}"
+  }
 
-    def determineScalaType(rf: TableField[Record, _], fieldType: Type): Type = {
-      val baseType =
-        if (fieldType == typeOf[java.sql.Timestamp]) typeOf[LocalDateTime]
-        else if (fieldType == typeOf[java.math.BigDecimal]) typeOf[BigDecimal]
-        else if (fieldType == typeOf[java.lang.Byte]) typeOf[Byte]
-        else if (fieldType == typeOf[java.lang.Short]) typeOf[Short]
-        else if (fieldType == typeOf[java.lang.Integer]) typeOf[Int]
-        else if (fieldType == typeOf[java.lang.Long]) typeOf[Long]
-        else if (fieldType == typeOf[java.lang.Float]) typeOf[Float]
-        else if (fieldType == typeOf[java.lang.Double]) typeOf[Double]
-        else if (fieldType == typeOf[java.lang.Character]) typeOf[Char]
-        else if (fieldType == typeOf[java.lang.Boolean]) typeOf[Boolean]
-        else fieldType
+  def genGetter(rf: TableField[Record, _], recordType: Type, scalaType: Type, fieldType: Type, camel: String): Tree = {
+    val recordGetter: Symbol = recordType.decl(TermName(s"get${camel.capitalize}"))
+    val (convert: Tree, get: Tree) =
+      if (fieldType == typeOf[java.math.BigDecimal]) (q"scala.math.BigDecimal(value)", q"rec.$recordGetter")
+      else if (fieldType == typeOf[java.lang.Byte]) (q"Byte2byte(value)", q"rec.$recordGetter")
+      else if (fieldType == typeOf[java.lang.Short]) (q"Short2short(value)", q"rec.$recordGetter")
+      else if (fieldType == typeOf[java.lang.Integer]) (q"Integer2int(value)", q"rec.$recordGetter")
+      else if (fieldType == typeOf[java.lang.Long]) (q"Long2long(value)", q"rec.$recordGetter")
+      else if (fieldType == typeOf[java.lang.Float]) (q"Float2float(value)", q"rec.$recordGetter")
+      else if (fieldType == typeOf[java.lang.Double]) (q"Double2double(value)", q"rec.$recordGetter")
+      else if (fieldType == typeOf[java.lang.Character]) (q"Char2char(value)", q"rec.$recordGetter")
+      else if (fieldType == typeOf[java.lang.Boolean]) (q"Boolean2boolean(value)", q"rec.$recordGetter")
+      else (q"value", q"rec.$recordGetter")
 
-      if (rf.getDataType.nullable) appliedType(weakTypeOf[Option[_]], List(baseType)) else baseType
-    }
+    if (rf.getDataType.nullable) q"{rec: $recordType => Option($get).map(value => $convert)}"
+    else q"{rec: $recordType => val value = $get; $convert}"
+  }
 
-    def genSchemaObject(schema: Type): Tree = {
-      val tables = schema.declarations
-        .filterNot(_.isMethod)
-        .filter(_.isTerm)
-        .map(_.asTerm)
-        .map(_.typeSignature)
-        .filter(_.baseClasses.exists(_.fullName == "org.jooq.Table"))
-        //        .filter(_.typeSymbol.name.toString == "DateByDay")
-        .toList
 
-      q"""
-        object ${newTermName(schema.typeSymbol.name.toString)} {
-          ..${tables.flatMap(genTableTypes(_))}
+  def genRawGetter(rf: TableField[Record, _], scalaType: Type, fieldType: Type, camel: String): Tree = {
+    val convert: Tree =
+      if (fieldType == typeOf[java.math.BigDecimal]) q"scala.math.BigDecimal(value)"
+      else if (fieldType == typeOf[java.lang.Byte]) q"Byte2byte(value)"
+      else if (fieldType == typeOf[java.lang.String]) q"Short2short(value)"
+      else if (fieldType == typeOf[java.lang.Short]) q"Short2short(value)"
+      else if (fieldType == typeOf[java.lang.Integer]) q"Integer2int(value)"
+      else if (fieldType == typeOf[java.lang.Long]) q"Long2long(value)"
+      else if (fieldType == typeOf[java.lang.Float]) q"Float2float(value)"
+      else if (fieldType == typeOf[java.lang.Double]) q"Double2double(value)"
+      else if (fieldType == typeOf[java.lang.Character]) q"Char2char(value)"
+      else if (fieldType == typeOf[java.lang.Boolean]) q"Boolean2boolean(value)"
+      else q"value"
+
+    if (rf.getDataType.nullable) q"{v: $fieldType => Option(v).map(value => $convert)}"
+    else q"{value: $fieldType => $convert}"
+  }
+
+  def determineScalaType(rf: TableField[Record, _], fieldType: Type): Type = {
+    val baseType =
+      if (fieldType == typeOf[java.math.BigDecimal]) typeOf[BigDecimal]
+      else if (fieldType == typeOf[java.lang.Byte]) typeOf[Byte]
+      else if (fieldType == typeOf[java.lang.Short]) typeOf[Short]
+      else if (fieldType == typeOf[java.lang.Integer]) typeOf[Int]
+      else if (fieldType == typeOf[java.lang.Long]) typeOf[Long]
+      else if (fieldType == typeOf[java.lang.Float]) typeOf[Float]
+      else if (fieldType == typeOf[java.lang.Double]) typeOf[Double]
+      else if (fieldType == typeOf[java.lang.Character]) typeOf[Char]
+      else if (fieldType == typeOf[java.lang.Boolean]) typeOf[Boolean]
+      else fieldType
+
+    if (rf.getDataType.nullable) {
+      val optionTpe = symbolOf[Option[_]].asClass.toTypeConstructor
+      appliedType(optionTpe, baseType)
+    } else baseType
+  }
+
+  def genSchemaObject(schema: Type): Tree = {
+    val tables = schema.decls
+      .filterNot(_.isMethod)
+      .filter(_.isTerm)
+      .map(_.asTerm)
+      .map(_.typeSignature)
+      .filter(_.baseClasses.exists(_.fullName == "org.jooq.Table"))
+      .toList
+
+    q"""
+        object ${TermName(schema.typeSymbol.name.toString)} {
+          ..${tables.flatMap(genTableTypes)}
         }
       """
-    }
+  }
 
-    def bail(message: String) = c.abort(c.enclosingPosition, message)
+  def bail(message: String) = c.abort(c.enclosingPosition, message)
 
-    val macroTypeWithArguments = c.typeCheck(q"${c.prefix.tree}").tpe
+  def fromSchema_impl(annottees: c.Expr[Any]*): c.Expr[Any] = {
+    val macroTypeWithArguments = c.typecheck(q"${c.prefix.tree}").tpe
     val annotationClass: ClassSymbol = macroTypeWithArguments.typeSymbol.asClass
     val annotationTypePlaceholder: Type = annotationClass.typeParams.head.asType.toType
     val catalog: Type = annotationTypePlaceholder.asSeenFrom(macroTypeWithArguments, annotationClass)
 
-    val schemas = catalog.declarations
+    val schemas = catalog.decls
       .filterNot(_.isMethod)
       .filter(_.isTerm)
       .map(_.asTerm)
@@ -247,6 +268,7 @@ object JooqGenerator {
             object $name {
               import scala.language.implicitConversions
               import scala.collection.JavaConverters._
+              import java.lang.Integer
 
               trait JooqRecordLike[R <: org.jooq.Record] {
                 def record: R
@@ -256,7 +278,7 @@ object JooqGenerator {
                 rl.record
               }
 
-              ..${schemas.map(genSchemaObject(_))}
+              ..${schemas.map(genSchemaObject)}
             }
           """
         )

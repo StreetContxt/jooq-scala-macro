@@ -1,9 +1,7 @@
 import java.nio.charset.StandardCharsets
 
 import com.github.kxbmap.sbt.jooq.JooqCodegen.autoImport._
-import org.h2.tools.{RunScript, Server}
-
-import scala.util.Try
+import org.h2.tools.RunScript
 
 organization := "com.contxt"
 
@@ -21,9 +19,12 @@ scmInfo := Some(ScmInfo(url("https://github.com/streetcontxt/"),
 
 name := "Jooq Scala Macro"
 
-version := "0.1-SNAPSHOT"
+version := sys.props
+  .get("TRAVIS_BUILD_NUMBER")
+  .map(v => v + ".0")
+  .getOrElse("LOCAL-SNAPSHOT")
 
-scalaVersion := "2.10.4"
+scalaVersion := "2.11.8"
 
 homepage := Some(url("https://github.com/StreetContxt/jooq-scala-macro"))
 
@@ -46,11 +47,15 @@ scalacOptions ++= Seq(
   "-Xlint"
 )
 
+lazy val paradiseDependency = "org.scalamacros" % "paradise_2.11.8" % "2.1.0"
+
+resolvers += Resolver.mavenLocal
+
 libraryDependencies ++= Seq(
   "org.jooq" % "jooq" % "3.8.1",
   "org.jooq" % "jooq-scala" % "3.8.1",
-  "org.scala-lang" % "scala-reflect" % "2.10.4",
-  "org.scalamacros" % "paradise_2.10.4" % "2.1.0-M5",
+  "org.scala-lang" % "scala-reflect" % scalaVersion.value,
+  paradiseDependency,
   "org.specs2" %% "specs2-core" % "3.8.4" % "test",
   "com.h2database" % "h2" % "1.4.192" % "jooq",
   "com.h2database" % "h2" % "1.4.192" % "test"
@@ -58,7 +63,7 @@ libraryDependencies ++= Seq(
 
 jooqVersion := "3.8.1"
 
-addCompilerPlugin("org.scalamacros" % "paradise_2.10.4" % "2.1.0-M5")
+addCompilerPlugin(paradiseDependency)
 
 enablePlugins(JooqCodegen)
 
@@ -80,22 +85,29 @@ unmanagedSourceDirectories in Test += jooqCodegenTargetDirectory.value
 
 sourceDirectories in Test += jooqCodegenTargetDirectory.value
 
+compileOrder in Test := CompileOrder.JavaThenScala
+
 jooqCodegen := {
-  populateH2.value; jooqCodegen.value
+  populateH2.value;
+  jooqCodegen.value
 }
 
 (compile in Test) := {
-  jooqCodegen.value; (compile in Test).value
+  jooqCodegen.value;
+  (compile in Test).value
 }
 
 (test in Test) := {
-  populateH2.value; (test in Test).value
+  populateH2.value;
+  (test in Test).value
 }
 
 (testOnly in Test) := {
-  populateH2.value; (testOnly in Test).value
+  populateH2.value;
+  (testOnly in Test).value
 }
 
 (testQuick in Test) := {
-  populateH2.value; (testQuick in Test).value
+  populateH2.value;
+  (testQuick in Test).value
 }
