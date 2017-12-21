@@ -52,8 +52,8 @@ lazy val paradiseDependency = "org.scalamacros" % "paradise_2.11.8" % "2.1.0"
 resolvers += Resolver.mavenLocal
 
 libraryDependencies ++= Seq(
-  "org.jooq" % "jooq" % "3.8.1",
-  "org.jooq" % "jooq-scala" % "3.8.1",
+  "org.jooq" % "jooq" % "3.10.2",
+  "org.jooq" %% "jooq-scala" % "3.10.2",
   "org.scala-lang" % "scala-reflect" % scalaVersion.value,
   paradiseDependency,
   "org.specs2" %% "specs2-core" % "3.8.4" % "test",
@@ -61,7 +61,7 @@ libraryDependencies ++= Seq(
   "com.h2database" % "h2" % "1.4.192" % "test"
 )
 
-jooqVersion := "3.8.1"
+jooqVersion := "3.10.2"
 
 addCompilerPlugin(paradiseDependency)
 

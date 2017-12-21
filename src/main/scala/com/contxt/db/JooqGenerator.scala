@@ -1,6 +1,5 @@
 package com.contxt.db
 
-
 import org.jooq.{Record, TableField, TableRecord}
 
 import scala.annotation.StaticAnnotation
@@ -8,6 +7,10 @@ import scala.language.experimental.macros
 import scala.reflect.macros.whitebox
 
 class fromCatalog[C <: org.jooq.Catalog] extends StaticAnnotation {
+  def macroTransform(annottees: Any*) = macro JooqGenerator.fromCatalog_impl
+}
+
+class fromSchema[C <: org.jooq.Catalog] extends StaticAnnotation {
   def macroTransform(annottees: Any*) = macro JooqGenerator.fromSchema_impl
 }
 
@@ -169,7 +172,12 @@ class JooqGenerator(val c: whitebox.Context) {
       else if (fieldType == typeOf[java.lang.Boolean]) q"boolean2Boolean(value)"
       else q"value"
 
-    if (rf.getDataType.nullable) q"{(rec: $recordType, opt: $scalaType) => rec.$recordSetter(opt.map(value => $convert).getOrElse(null))}"
+    if (scalaType.typeSymbol == typeOf[Array[String]].typeSymbol)
+      q"{(rec: $recordType, value: $scalaType) => rec.$recordSetter(value : _*)}"
+    else if (rf.getDataType.nullable && scalaType.typeArgs.head.typeSymbol == typeOf[Array[String]].typeSymbol)
+      q"{(rec: $recordType, opt: $scalaType) => rec.$recordSetter(opt.map(value => $convert).getOrElse(null) : _*)}"
+    else if (rf.getDataType.nullable)
+      q"{(rec: $recordType, opt: $scalaType) => rec.$recordSetter(opt.map(value => $convert).getOrElse(null))}"
     else q"{(rec: $recordType, value: $scalaType) => rec.$recordSetter($convert)}"
   }
 
@@ -245,9 +253,49 @@ class JooqGenerator(val c: whitebox.Context) {
       """
   }
 
-  def bail(message: String) = c.abort(c.enclosingPosition, message)
+  private def bail(message: String) = c.abort(c.enclosingPosition, message)
 
   def fromSchema_impl(annottees: c.Expr[Any]*): c.Expr[Any] = {
+    val macroTypeWithArguments = c.typecheck(q"${c.prefix.tree}").tpe
+    val annotationClass: ClassSymbol = macroTypeWithArguments.typeSymbol.asClass
+    val annotationTypePlaceholder: Type = annotationClass.typeParams.head.asType.toType
+    val schema: Type = annotationTypePlaceholder.asSeenFrom(macroTypeWithArguments, annotationClass)
+
+    val tables = schema.decls
+      .filterNot(_.isMethod)
+      .filter(_.isTerm)
+      .map(_.asTerm)
+      .map(_.typeSignature)
+      .filter(_.baseClasses.exists(_.fullName == "org.jooq.Table"))
+      .toList
+
+    annottees.map(_.tree) match {
+      case List(q"object $name { ..$body }") if body.isEmpty =>
+        c.Expr[Any](
+          q"""
+          object $name {
+            import scala.language.implicitConversions
+            import scala.collection.JavaConverters._
+
+            trait JooqRecordLike[R <: org.jooq.Record] {
+              def record: R
+            }
+
+            implicit def RecordLikeToRecord[R <: org.jooq.Record] (rl: JooqRecordLike[R]): R = {
+              rl.record
+            }
+            ..${tables.flatMap(genTableTypes)}
+          }
+            """
+        )
+      case a => bail(
+        s"You must annotate an object definition with an empty body. instead found $a"
+      )
+    }
+
+  }
+
+  def fromCatalog_impl(annottees: c.Expr[Any]*): c.Expr[Any] = {
     val macroTypeWithArguments = c.typecheck(q"${c.prefix.tree}").tpe
     val annotationClass: ClassSymbol = macroTypeWithArguments.typeSymbol.asClass
     val annotationTypePlaceholder: Type = annotationClass.typeParams.head.asType.toType
@@ -268,7 +316,6 @@ class JooqGenerator(val c: whitebox.Context) {
             object $name {
               import scala.language.implicitConversions
               import scala.collection.JavaConverters._
-              import java.lang.Integer
 
               trait JooqRecordLike[R <: org.jooq.Record] {
                 def record: R
@@ -282,14 +329,13 @@ class JooqGenerator(val c: whitebox.Context) {
             }
           """
         )
-      case _ => bail(
-        "You must annotate an object definition with an empty body."
+      case a => bail(
+        s"You must annotate an object definition with an empty body. instead found $a"
       )
     }
   }
 
-  def underscoreToCamel(name: String) = "_([a-z\\d])".r.replaceAllIn(name, { m =>
+  private def underscoreToCamel(name: String) = "_([a-z\\d])".r.replaceAllIn(name, { m =>
     (if (m.group(1).matches("^[0-9]$")) "_" else "") + m.group(1).toUpperCase()
   }).replaceAll("_$", "")
 }
-
