@@ -50,12 +50,14 @@ scalacOptions ++= Seq(
 lazy val paradiseDependency = "org.scalamacros" % "paradise_2.11.8" % "2.1.0"
 
 resolvers += Resolver.mavenLocal
+resolvers += Resolver.sonatypeRepo("public")
 
 libraryDependencies ++= Seq(
   "org.jooq" % "jooq" % "3.10.2",
   "org.jooq" %% "jooq-scala" % "3.10.2",
   "org.scala-lang" % "scala-reflect" % scalaVersion.value,
   paradiseDependency,
+  "com.eed3si9n" %% "treehugger" % "0.4.3",
   "org.specs2" %% "specs2-core" % "3.8.4" % "test",
   "com.h2database" % "h2" % "1.4.192" % "jooq",
   "com.h2database" % "h2" % "1.4.192" % "test"
@@ -88,26 +90,26 @@ sourceDirectories in Test += jooqCodegenTargetDirectory.value
 compileOrder in Test := CompileOrder.JavaThenScala
 
 jooqCodegen := {
-  populateH2.value;
+  populateH2.value
   jooqCodegen.value
 }
 
 (compile in Test) := {
-  jooqCodegen.value;
+  jooqCodegen.value
   (compile in Test).value
 }
 
 (test in Test) := {
-  populateH2.value;
+  populateH2.value
   (test in Test).value
 }
 
 (testOnly in Test) := {
-  populateH2.value;
+  populateH2.value
   (testOnly in Test).value
 }
 
 (testQuick in Test) := {
-  populateH2.value;
+  populateH2.value
   (testQuick in Test).value
 }
