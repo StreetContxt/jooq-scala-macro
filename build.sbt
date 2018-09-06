@@ -52,7 +52,7 @@ lazy val paradiseDependency = "org.scalamacros" % "paradise_2.11.8" % "2.1.0"
 resolvers += Resolver.mavenLocal
 
 libraryDependencies ++= Seq(
-  "org.jooq" % "jooq" % "3.10.2",
+  "org.jooq" % "jooq" % "3.11.4",
   "org.jooq" %% "jooq-scala" % "3.10.2",
   "org.scala-lang" % "scala-reflect" % scalaVersion.value,
   paradiseDependency,
