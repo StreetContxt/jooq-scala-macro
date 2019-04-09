@@ -32,9 +32,11 @@ scalacOptions ++= Seq(
 lazy val paradiseDependency = "org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full
 addCompilerPlugin(paradiseDependency)
 
+val jooqVersion = "3.11.10"
+
 libraryDependencies ++= Seq(
-  "org.jooq" % "jooq" % "3.11.4",
-  "org.jooq" %% "jooq-scala" % "3.10.2",
+  "org.jooq" % "jooq" % jooqVersion,
+  "org.jooq" %% "jooq-scala" % jooqVersion,
   "org.scala-lang" % "scala-reflect" % scalaVersion.value,
   paradiseDependency
 )
