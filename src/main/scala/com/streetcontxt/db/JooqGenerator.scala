@@ -1,4 +1,4 @@
-package com.contxt.db
+package com.streetcontxt.db
 
 import org.jooq.{Record, TableField, TableRecord}
 
