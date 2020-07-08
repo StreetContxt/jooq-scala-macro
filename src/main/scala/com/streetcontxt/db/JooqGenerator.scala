@@ -7,11 +7,11 @@ import scala.language.experimental.macros
 import scala.reflect.macros.whitebox
 
 class fromCatalog[C <: org.jooq.Catalog] extends StaticAnnotation {
-  def macroTransform(annottees: Any*) = macro JooqGenerator.fromCatalog_impl
+  def macroTransform(annottees: Any*): Any = macro JooqGenerator.fromCatalog_impl
 }
 
 class fromSchema[C <: org.jooq.Catalog] extends StaticAnnotation {
-  def macroTransform(annottees: Any*) = macro JooqGenerator.fromSchema_impl
+  def macroTransform(annottees: Any*): Any  = macro JooqGenerator.fromSchema_impl
 }
 
 class JooqGenerator(val c: whitebox.Context) {
@@ -92,12 +92,12 @@ class JooqGenerator(val c: whitebox.Context) {
           """
         val defaultCtorPos = c.enclosingPosition
         val modCtorPos = defaultCtorPos
-          .withEnd(defaultCtorPos.endOrPoint + 1)
-          .withStart(defaultCtorPos.startOrPoint + 1)
+          .withEnd(defaultCtorPos.end + 1)
+          .withStart(defaultCtorPos.start + 1)
           .withPoint(defaultCtorPos.point + 1)
         val recCtorPos = modCtorPos
-          .withEnd(modCtorPos.endOrPoint + 1)
-          .withStart(modCtorPos.startOrPoint + 1)
+          .withEnd(modCtorPos.end + 1)
+          .withStart(modCtorPos.start + 1)
           .withPoint(modCtorPos.point + 1)
         val newBody = body :+ atPos(modCtorPos)(modCtor) :+ atPos(recCtorPos)(recCtor)
         q"case class $typeName (..$fieldDefs) extends JooqRecordLike[$recordType] { ..$newBody }"
@@ -275,7 +275,7 @@ class JooqGenerator(val c: whitebox.Context) {
           q"""
           object $name {
             import scala.language.implicitConversions
-            import scala.collection.JavaConverters._
+            import scala.jdk.CollectionConverters._
 
             trait JooqRecordLike[R <: org.jooq.Record] {
               def record: R
@@ -315,7 +315,7 @@ class JooqGenerator(val c: whitebox.Context) {
           q"""
             object $name {
               import scala.language.implicitConversions
-              import scala.collection.JavaConverters._
+              import scala.jdk.CollectionConverters._
 
               trait JooqRecordLike[R <: org.jooq.Record] {
                 def record: R

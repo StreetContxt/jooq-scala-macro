@@ -8,10 +8,10 @@ bintrayOrganization := Some("streetcontxt")
 resolvers += Resolver.bintrayRepo("streetcontxt", "maven")
 resolvers += Resolver.mavenLocal
 
-scalaVersion := "2.12.7"
-crossScalaVersions := Seq("2.11.12", "2.12.7")
+scalaVersion := "2.13.3"
+crossScalaVersions := Seq("2.11.12", "2.12.11", "2.13.3")
 
-val versionPattern = "release-([0-9\\.]*)".r
+val versionPattern = "release-([0-9.]*)".r
 version := sys.props
   .get("CIRCLE_TAG")
   .orElse(sys.env.get("CIRCLE_TAG"))
@@ -25,16 +25,40 @@ scalacOptions ++= Seq(
   "-deprecation",
   "-feature",
   "-unchecked",
-  "-Ymacro-debug-lite",
+  // uncomment to see generated code
+  // "-Ymacro-debug-lite",
   "-Xlint"
 )
 
-lazy val paradiseDependency = "org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full
-addCompilerPlugin(paradiseDependency)
+lazy val scalaBefore213 = settingKey[Boolean]("Compiling using Scala < 2.13")
 
-libraryDependencies ++= Seq(
-  "org.jooq" % "jooq" % "3.11.4",
-  "org.jooq" %% "jooq-scala" % "3.10.2",
-  "org.scala-lang" % "scala-reflect" % scalaVersion.value,
-  paradiseDependency
+def configureVersionSpecificSettings() = Seq(
+  scalaBefore213 := {
+    val sv = scalaVersion.value
+    (sv startsWith "2.11.") || (sv startsWith "2.12.")
+  },
+  libraryDependencies ++= {
+    val jooqVersion = if (scalaBefore213.value) "3.10.8" else "3.13.2"
+    Seq(
+      "org.scala-lang" % "scala-reflect" % scalaVersion.value % Compile,
+      "org.scala-lang" % "scala-compiler" % scalaVersion.value % Provided,
+      "org.jooq" % "jooq" % jooqVersion,
+      "org.jooq" %% "jooq-scala" % jooqVersion
+    )
+  },
+  libraryDependencies ++= {
+    if (scalaBefore213.value)
+      Seq(
+        compilerPlugin("org.scalamacros" % "paradise" % "2.1.1" cross CrossVersion.patch),
+        "org.scala-lang.modules" %% "scala-collection-compat" % "2.1.6",
+      )
+    else
+      Nil
+  },
+  scalacOptions ++= {
+    if (scalaBefore213.value) Nil
+    else Seq("-Ymacro-annotations")
+  }
 )
+
+configureVersionSpecificSettings()
