@@ -2,11 +2,56 @@
 
 # Introduction
 
-The Jooq-scala-macro project consists of a public type provider for scala which generates immutable scala classes based on the standard generated jooq meta-model classes
+The `jooq-scala-macro` project consists of a public type provider for Scala which generates immutable Scala classes based on the standard generated JOOQ meta-model classes.
 
-Implicit conversions are also provided to go to/from the java and scala representations, and the companion object for a table extends the `org.jooq.Table` implementation allowing the companion to be used in Jooq queries
+Implicit conversions are also provided to go to/from the Java and Scala representations, and the companion object for a table extends the `org.jooq.Table` implementation allowing the companion to be used in JOOQ queries.
 
 More detailed documentation is being worked on, in the meantime feel free to ask questions in the [Gitter Channel](https://gitter.im/streetcontxt/Lobby).
+
+# Scala & Jooq versions support
+
+Version 13.0:
+
+| Scala version | JOOQ version |
+|---------------|--------------|
+|    2.11.x     |   ≥ 3.10.2   |
+|    2.12.x     |   ≥ 3.10.2   |
+
+
+Version 13.1+:
+
+| Scala version | JOOQ version |
+|---------------|--------------|
+|    2.11.x     |   ≥ 3.10.8   |
+|    2.12.x     |   ≥ 3.10.8   |
+|    2.13.x*    |   ≥ 3.13.    |
+
+\* JOOQ configuration notes for Scala 2.13.x & JOOQ 3.13.x:
+
+The JOOQ code generation process default settings has an important change in v3.13. By default, array types were using varargs setters in versions 3.9..3.12, but then this has been switched to collections in 3.13.
+
+The macro code does not have any knowledge about the settings used in generation, and assumes the varargs setters for backward compatibility, which could generate an incompatible code:
+```
+... type mismatch;
+[error]  found   : Array[String]
+[error]  required: Array[_ <: Array[String]]
+[error] @fromCatalog[DefaultCatalog]
+```
+
+To fix the above error, the varargs setters should be explicitly enabled in JOOQ codegen configuration in the client code:
+
+```xml
+<configuration>
+    ...
+    <generator>
+        ...
+        <generate>
+            <varargSetters>true</varargSetters>
+        </generate>
+    </generator>
+</configuration>
+
+```
 
 # Example Code
 
@@ -44,4 +89,4 @@ Our [Gitter](https://gitter.im/streetcontxt/Lobby) channel can be used to ask qu
 
 # Note
 
-This project was written separately from the Jooq project, our use of the name shouldn't be taken as any sort of endorsment from the developers of that library.
+This project was written separately from the JOOQ project, our use of the name shouldn't be taken as any sort of endorsement from the developers of that library.
