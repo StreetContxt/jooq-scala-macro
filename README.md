@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/StreetContxt/jooq-scala-macro.svg?branch=master)](https://travis-ci.org/StreetContxt/jooq-scala-macro)
+[![Build Status](https://circleci.com/gh/StreetContxt/jooq-scala-macro.svg?style=shield&circle-token=7ad3b21e88294341c19094eb316ef5f8865b10e8)](https://circleci.com/gh/StreetContxt/jooq-scala-macro)
 
 # Introduction
 
