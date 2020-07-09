@@ -1,4 +1,5 @@
-[![Build Status](https://circleci.com/gh/StreetContxt/jooq-scala-macro.svg?style=shield&circle-token=7ad3b21e88294341c19094eb316ef5f8865b10e8)](https://circleci.com/gh/StreetContxt/jooq-scala-macro)
+[![CircleCI](https://circleci.com/gh/StreetContxt/jooq-scala-macro.svg?style=shield&circle-token=7ad3b21e88294341c19094eb316ef5f8865b10e8)](https://circleci.com/gh/StreetContxt/jooq-scala-macro)
+[![Bintray](https://img.shields.io/bintray/v/streetcontxt/maven/jooq-scala-macro)](https://bintray.com/streetcontxt/maven/jooq-scala-macro/_latestVersion)
 
 # Introduction
 
@@ -8,7 +9,7 @@ Implicit conversions are also provided to go to/from the Java and Scala represen
 
 More detailed documentation is being worked on, in the meantime feel free to ask questions in the [Gitter Channel](https://gitter.im/streetcontxt/Lobby).
 
-# Scala & Jooq versions support
+# Scala & JOOQ versions support
 
 Version 13.0:
 
@@ -24,7 +25,7 @@ Version 13.1+:
 |---------------|--------------|
 |    2.11.x     |   ≥ 3.10.8   |
 |    2.12.x     |   ≥ 3.10.8   |
-|    2.13.x*    |   ≥ 3.13.    |
+|    2.13.x*    |   ≥ 3.13.2   |
 
 \* JOOQ configuration notes for Scala 2.13.x & JOOQ 3.13.x:
 
